@@ -1,0 +1,32 @@
+name: "Cloudflare DDNS"
+description: "Dynamic DNS client for Cloudflare supporting IPv4 and IPv6."
+version: "1.0.0"
+slug: "cloudflare-ddns"
+init: false
+startup: services
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+host_network: true
+options:
+  api_token: ""
+  zone_id: ""
+  hosts:
+    - host: "@"
+      update_ipv4: true
+      update_ipv6: true
+      proxied: false
+  check_interval: 300
+schema:
+  api_token: str
+  zone_id: str
+  hosts:
+    - host: str
+      update_ipv4: bool
+      update_ipv6: bool
+      proxied: bool?
+      ipv4_url: str?
+      ipv6_url: str?
+  check_interval: "int(60,)"
