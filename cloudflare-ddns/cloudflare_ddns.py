@@ -10,16 +10,23 @@ OPTIONS_FILE = "/data/options.json"
 def log(message):
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}", flush=True)
 
-def get_public_ip(ipv6=False, custom_url=None):
+def get_opener(proxy_url=None):
+    if proxy_url:
+        proxy_handler = urllib.request.ProxyHandler({'http': proxy_url, 'https': proxy_url})
+        return urllib.request.build_opener(proxy_handler)
+    return urllib.request.build_opener()
+
+def get_public_ip(ipv6=False, custom_url=None, proxy_url=None):
     url = custom_url if custom_url else ("https://ipv6.icanhazip.com" if ipv6 else "https://ipv4.icanhazip.com")
     try:
-        with urllib.request.urlopen(url, timeout=10) as response:
+        opener = get_opener(proxy_url)
+        with opener.open(url, timeout=10) as response:
             return response.read().decode("utf-8").strip()
     except Exception as e:
         log(f"Error fetching {'IPv6' if ipv6 else 'IPv4'} from {url}: {e}")
         return None
 
-def cloudflare_request(method, endpoint, api_token, data=None):
+def cloudflare_request(method, endpoint, api_token, data=None, proxy_url=None):
     url = f"https://api.cloudflare.com/client/v4/{endpoint}"
     headers = {
         "Authorization": f"Bearer {api_token}",
@@ -30,7 +37,8 @@ def cloudflare_request(method, endpoint, api_token, data=None):
     req = urllib.request.Request(url, data=req_body, headers=headers, method=method)
     
     try:
-        with urllib.request.urlopen(req, timeout=15) as response:
+        opener = get_opener(proxy_url)
+        with opener.open(req, timeout=15) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         try:
@@ -57,6 +65,7 @@ def update_dns():
 
     api_token = options.get("api_token")
     zone_id = options.get("zone_id")
+    proxy_url = options.get("proxy")
     hosts_config = options.get("hosts", [])
     
     if not api_token or not zone_id:
@@ -68,7 +77,7 @@ def update_dns():
         return
 
     # Fetch zone info to get the domain name if needed
-    zone_info = cloudflare_request("GET", f"zones/{zone_id}", api_token)
+    zone_info = cloudflare_request("GET", f"zones/{zone_id}", api_token, proxy_url=proxy_url)
     if not zone_info or not zone_info.get("success"):
         log(f"Failed to fetch zone info for {zone_id}")
         return
@@ -76,7 +85,7 @@ def update_dns():
     zone_name = zone_info["result"]["name"]
 
     # Fetch existing records for this zone
-    records_resp = cloudflare_request("GET", f"zones/{zone_id}/dns_records?per_page=100", api_token)
+    records_resp = cloudflare_request("GET", f"zones/{zone_id}/dns_records?per_page=100", api_token, proxy_url=proxy_url)
     if not records_resp or not records_resp.get("success"):
         log(f"Failed to fetch DNS records for zone {zone_id}")
         return
@@ -94,7 +103,7 @@ def update_dns():
 
         # Process IPv4
         if update_ipv4:
-            current_ipv4 = get_public_ip(False, ipv4_url)
+            current_ipv4 = get_public_ip(False, ipv4_url, proxy_url=proxy_url)
             if current_ipv4:
                 found_record = next((r for r in records if r["name"] == full_host and r["type"] == "A"), None)
                 if found_record:
@@ -107,7 +116,7 @@ def update_dns():
                             "ttl": 1 if proxied else 3600,
                             "proxied": proxied
                         }
-                        res = cloudflare_request("PATCH", f"zones/{zone_id}/dns_records/{found_record['id']}", api_token, update_data)
+                        res = cloudflare_request("PATCH", f"zones/{zone_id}/dns_records/{found_record['id']}", api_token, update_data, proxy_url=proxy_url)
                         if res and res.get("success"):
                             log(f"Successfully updated {full_host} (A)")
                         else:
@@ -123,7 +132,7 @@ def update_dns():
                         "ttl": 1 if proxied else 3600,
                         "proxied": proxied
                     }
-                    res = cloudflare_request("POST", f"zones/{zone_id}/dns_records", api_token, create_data)
+                    res = cloudflare_request("POST", f"zones/{zone_id}/dns_records", api_token, create_data, proxy_url=proxy_url)
                     if res and res.get("success"):
                         log(f"Successfully created {full_host} (A)")
                     else:
@@ -131,7 +140,7 @@ def update_dns():
 
         # Process IPv6
         if update_ipv6:
-            current_ipv6 = get_public_ip(True, ipv6_url)
+            current_ipv6 = get_public_ip(True, ipv6_url, proxy_url=proxy_url)
             if current_ipv6:
                 found_record = next((r for r in records if r["name"] == full_host and r["type"] == "AAAA"), None)
                 if found_record:
@@ -144,7 +153,7 @@ def update_dns():
                             "ttl": 1 if proxied else 3600,
                             "proxied": proxied
                         }
-                        res = cloudflare_request("PATCH", f"zones/{zone_id}/dns_records/{found_record['id']}", api_token, update_data)
+                        res = cloudflare_request("PATCH", f"zones/{zone_id}/dns_records/{found_record['id']}", api_token, update_data, proxy_url=proxy_url)
                         if res and res.get("success"):
                             log(f"Successfully updated {full_host} (AAAA)")
                         else:
@@ -160,7 +169,7 @@ def update_dns():
                         "ttl": 1 if proxied else 3600,
                         "proxied": proxied
                     }
-                    res = cloudflare_request("POST", f"zones/{zone_id}/dns_records", api_token, create_data)
+                    res = cloudflare_request("POST", f"zones/{zone_id}/dns_records", api_token, create_data, proxy_url=proxy_url)
                     if res and res.get("success"):
                         log(f"Successfully created {full_host} (AAAA)")
                     else:
