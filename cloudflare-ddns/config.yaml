@@ -13,6 +13,7 @@ host_network: true
 options:
   api_token: ""
   zone_id: ""
+  proxy: ""
   hosts:
     - host: "@"
       update_ipv4: true
@@ -22,6 +23,7 @@ options:
 schema:
   api_token: str
   zone_id: str
+  proxy: str?
   hosts:
     - host: str
       update_ipv4: bool
